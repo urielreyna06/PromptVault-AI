@@ -1,0 +1,53 @@
+:root{
+  --green:#6ee7b7;
+  --yellow:#fef08a;
+  --red:#fca5a5;
+  --card-bg:#ffffff;
+  --muted:#6b6b7a;
+  --accent:#7c3aed; /* light purple accent */
+  --accent-600:#6d28d9;
+  --surface:#fffafc;
+  --bg:#f7f5fb;
+}
+
+body{font-family:Segoe UI, Roboto, Arial, sans-serif;background:var(--bg);color:#1f1b2e;margin:0;padding:28px}
+.container{max-width:980px;margin:0 auto}
+h1{margin:0 0 18px;font-size:30px;color:var(--accent-600)}
+.form-section{background:linear-gradient(180deg,var(--surface),#fbf7ff);padding:18px;border-radius:12px;margin-bottom:20px;border:1px solid rgba(124,58,237,0.08)}
+form{display:grid;grid-template-columns:1fr;gap:12px;align-items:start}
+form label{display:block;margin-bottom:8px;font-size:14px;color:#221c35}
+input[type=text], textarea{width:100%;padding:10px;border:1px solid #efe8ff;border-radius:10px;font-size:14px;background:#fff}
+.form-actions{display:flex;justify-content:flex-end}
+button{background:var(--accent-600);color:#fff;border:none;padding:10px 14px;border-radius:10px;cursor:pointer;box-shadow:0 8px 20px rgba(124,58,237,0.12);font-weight:600}
+button.small{background:#586069;padding:6px 8px;margin-top:8px;border-radius:8px}
+.controls{display:flex;gap:10px;align-items:center}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-top:8px}
+.card{background:var(--card-bg);padding:16px;border-radius:12px;box-shadow:0 10px 30px rgba(16,24,40,0.06);border:1px solid rgba(16,24,40,0.04);display:flex;flex-direction:column}
+.model{font-weight:700;font-size:15px;margin-bottom:6px;color:#0b2f6b}
+.title{font-size:15px;font-weight:700;margin-bottom:8px;color:#111}
+.times{color:var(--muted);font-size:13px;margin-bottom:8px}
+.tokens{font-size:13px;margin-bottom:8px}
+.preview{color:#374151;font-size:13px;margin-top:8px}
+.code-preview{background:#0f1724;color:#e6eef8;padding:10px;border-radius:8px;overflow:auto;font-family:Consolas,Monaco,monospace;font-size:12px}
+.full-content{background:#0f1724;color:#e6eef8;padding:12px;border-radius:8px;overflow:auto;font-family:Consolas,Monaco,monospace;font-size:13px}
+.edit-card label{display:block;margin-bottom:8px;font-size:13px}
+.edit-card input[type="text"], .edit-card textarea, .edit-card input[type="number"]{padding:8px;border:1px solid #dfe6ee;border-radius:8px;font-size:14px;width:100%;box-sizing:border-box;background:#fff}
+.card .small{margin-top:8px}
+.badge{display:inline-block;padding:4px 10px;border-radius:999px;color:#fff;font-weight:700;margin-left:10px;font-size:12px}
+.badge.high{background:var(--green)}
+.badge.medium{background:var(--yellow);color:#222}
+.badge.low{background:var(--red)}
+
+/* Modal */
+.modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(2,6,23,0.55);opacity:0;pointer-events:none;transition:opacity .18s ease}
+.modal.open{opacity:1;pointer-events:auto}
+.modal-content{background:#fff;padding:20px;border-radius:12px;max-width:860px;width:94%;box-shadow:0 30px 80px rgba(2,6,23,0.45);position:relative}
+.modal-close{position:absolute;right:12px;top:8px;background:transparent;border:none;font-size:24px;color:#333;cursor:pointer}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+.modal .model{color:var(--accent)}
+.modal h3{margin:0 0 8px}
+
+@media (max-width:720px){
+  form{grid-template-columns:1fr;}
+  .form-actions{grid-column:1}
+}

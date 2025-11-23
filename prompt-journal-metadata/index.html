@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Prompt Journal - Metadata Demo</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="container">
+    <h1>Prompt Library (Metadata)</h1>
+
+    <section class="form-section">
+      <form id="prompt-form">
+        <label>Title
+          <input type="text" id="title" placeholder="Short title for this prompt (optional)" maxlength="200" />
+        </label>
+        <label>Model name
+          <input type="text" id="modelName" placeholder="e.g., gpt-5-mini" maxlength="100" required />
+        </label>
+        <label>Prompt / Content
+          <textarea id="content" rows="4" placeholder="Enter prompt or code here"></textarea>
+        </label>
+        <div class="form-actions">
+          <button type="submit">Add Prompt</button>
+        </div>
+      </form>
+    </section>
+
+    <section>
+      <h2>Prompts</h2>
+      <div id="cards" class="cards"></div>
+    </section>
+    <!-- View modal -->
+    <div id="viewModal" class="modal" aria-hidden="true">
+      <div class="modal-content">
+        <button id="modalClose" class="modal-close">×</button>
+        <div id="modalBody"></div>
+        <div class="modal-actions">
+          <button id="modalCopy">Copy Prompt</button>
+          <button id="modalClose2">Close</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script type="module">
+    import { trackModel, updateTimestamps, estimateTokens } from './metadata.js';
+    import { getAllPrompts, savePrompt, exportPrompts, importPromptsFile, createBackup, restoreBackup, listBackups, deleteBackup, deletePrompt } from './storage.js';
+    import { showConfirm, showToast } from './ui.js';
+
+    const form = document.getElementById('prompt-form');
+    const cardsEl = document.getElementById('cards');
+
+    // data
+    let prompts = [];
+
+    function addSamplePrompts() {
+      try {
+        const p1 = trackModel('gpt-5-mini', 'Write a short poem about rivers.');
+        const p2 = trackModel('gpt-4', '```js\nfunction add(a,b){return a+b}\n```');
+        // artificially older timestamp: adjust createdAt for demo
+        p1.createdAt = new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString();
+        p1.updatedAt = p1.createdAt;
+        // attach titles (UI-level property, metadata functions unchanged)
+        p1.title = 'Rivers poem';
+        p2.title = 'Simple JS add function';
+        prompts.push(p1, p2);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    function render() {
+      // sort by createdAt descending
+      prompts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      cardsEl.innerHTML = '';
+      for (const m of prompts) {
+        const card = document.createElement('div');
+        card.className = 'card';
+
+        // Title (if provided)
+        if (m.title) {
+          const titleEl = document.createElement('div');
+          titleEl.className = 'title';
+          titleEl.textContent = m.title;
+          card.appendChild(titleEl);
+        }
+
+        const model = document.createElement('div');
+        model.className = 'model';
+        model.textContent = m.model;
+
+        const times = document.createElement('div');
+        times.className = 'times';
+        try {
+          const created = new Date(m.createdAt).toLocaleString();
+          const updated = new Date(m.updatedAt).toLocaleString();
+          times.textContent = `Created: ${created} · Updated: ${updated}`;
+        } catch (e) {
+          times.textContent = 'Invalid timestamps';
+        }
+
+        const tokens = document.createElement('div');
+        tokens.className = 'tokens';
+        const t = m.tokenEstimate || { min: 0, max: 0, confidence: 'high' };
+        const badge = document.createElement('span');
+        badge.className = 'badge ' + (t.confidence || 'high');
+        badge.textContent = t.confidence.toUpperCase();
+
+        tokens.innerHTML = `Tokens: ${t.min} - ${t.max} `;
+        tokens.appendChild(badge);
+
+        // Preview snippet
+        const preview = document.createElement('div');
+        preview.className = 'preview';
+        const snippet = (m.content || '');
+        function truncate(s, n=140){ return s.length > n ? s.slice(0,n).trim() + '…' : s; }
+        // show code block differently if looks like code
+        const isCode = /```|\bfunction\b|=>|\{|;|\(|\)\s*\{/.test(snippet);
+        if (isCode) {
+          const codeEl = document.createElement('pre');
+          codeEl.className = 'code-preview';
+          codeEl.textContent = truncate(snippet, 240);
+          preview.appendChild(codeEl);
+        } else {
+          preview.textContent = truncate(snippet, 180);
+        }
+
+        const updateBtn = document.createElement('button');
+        updateBtn.className = 'small';
+        updateBtn.textContent = 'Touch UpdatedAt';
+        updateBtn.addEventListener('click', () => {
+          try {
+            const updated = updateTimestamps(m);
+            // replace in array
+            const idx = prompts.findIndex(p => p.createdAt === m.createdAt && p.model === m.model);
+            if (idx !== -1) prompts[idx] = updated;
+            render();
+          } catch (err) {
+            showToast('Error updating timestamps: ' + err.message, { type: 'error' });
+          }
+        });
+
+        card.appendChild(model);
+        card.appendChild(times);
+        card.appendChild(tokens);
+        card.appendChild(updateBtn);
+
+        const editBtn = document.createElement('button');
+        editBtn.className = 'small';
+        editBtn.style.marginLeft = '8px';
+        editBtn.textContent = 'Edit';
+        editBtn.addEventListener('click', () => {
+          startEdit(m);
+        });
+        card.appendChild(editBtn);
+
+        const viewBtn = document.createElement('button');
+        viewBtn.className = 'small';
+        viewBtn.style.marginLeft = '8px';
+        viewBtn.textContent = 'View';
+        viewBtn.addEventListener('click', () => { openViewModal(m); });
+        card.appendChild(viewBtn);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'small';
+        deleteBtn.style.marginLeft = '8px';
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.addEventListener('click', async () => {
+          try {
+            // create backup and delete
+            const backupKey = deletePrompt(m.id);
+            prompts = getAllPrompts();
+            render();
+            showToast('Prompt deleted', { actionLabel: 'Undo', action: async () => {
+              try { restoreBackup(backupKey); prompts = getAllPrompts(); render(); showToast('Undo successful'); }
+              catch (e) { showToast('Undo failed: ' + e.message, { type: 'error' }); }
+            }});
+          } catch (err) {
+            showToast('Delete failed: ' + err.message, { type: 'error' });
+          }
+        });
+        card.appendChild(deleteBtn);
+
+        card.appendChild(preview);
+
+        cardsEl.appendChild(card);
+      }
+    }
+
+    function startEdit(m) {
+      // create inline editor for a prompt
+      const editCard = document.createElement('div');
+      editCard.className = 'card edit-card';
+
+      const titleLabel = document.createElement('label');
+      titleLabel.textContent = 'Title';
+      const titleInput = document.createElement('input');
+      titleInput.type = 'text';
+      titleInput.value = m.title || '';
+      titleInput.style.width = '100%';
+      titleLabel.appendChild(titleInput);
+
+      const modelLabel = document.createElement('label');
+      modelLabel.textContent = 'Model';
+      const modelInput = document.createElement('input');
+      modelInput.type = 'text';
+      modelInput.value = m.model || '';
+      modelInput.style.width = '100%';
+      modelLabel.appendChild(modelInput);
+
+      const contentLabel = document.createElement('label');
+      contentLabel.textContent = 'Content';
+      const contentInput = document.createElement('textarea');
+      contentInput.rows = 4;
+      contentInput.value = m.content || '';
+      contentInput.style.width = '100%';
+      contentLabel.appendChild(contentInput);
+
+      const ratingLabel = document.createElement('label');
+      ratingLabel.textContent = 'Rating (optional)';
+      const ratingInput = document.createElement('input');
+      ratingInput.type = 'number';
+      ratingInput.min = 0;
+      ratingInput.max = 5;
+      ratingInput.value = (typeof m.rating === 'number') ? String(m.rating) : '';
+      ratingInput.style.width = '100%';
+      ratingLabel.appendChild(ratingInput);
+
+      const btnSave = document.createElement('button');
+      btnSave.type = 'button';
+      btnSave.textContent = 'Save';
+        btnSave.addEventListener('click', async () => {
+        try {
+          const newTitle = titleInput.value.trim();
+          const newModel = modelInput.value.trim();
+          const newContent = contentInput.value;
+          const ratingVal = ratingInput.value;
+          if (!newModel) throw new Error('Model name is required');
+
+          // update token estimate (heuristic for code detection)
+          const isCode = /```|\bfunction\b|=>|\{|;|\(|\)\s*\{/.test(newContent);
+          const newTokenEstimate = estimateTokens(newContent, isCode);
+
+          // build updated metadata object
+          const updated = Object.assign({}, m, {
+            title: newTitle,
+            model: newModel,
+            content: newContent,
+            rating: ratingVal === '' ? null : Number(ratingVal),
+            tokenEstimate: newTokenEstimate,
+          });
+
+          // update timestamp
+          const withTs = updateTimestamps(updated);
+
+          // persist
+          savePrompt(withTs);
+          prompts = getAllPrompts();
+          render();
+          showToast('Saved changes');
+        } catch (err) {
+          showToast('Failed to save changes: ' + err.message, { type: 'error' });
+          console.error(err);
+        }
+      });
+
+      const btnCancel = document.createElement('button');
+      btnCancel.type = 'button';
+      btnCancel.textContent = 'Cancel';
+      btnCancel.style.marginLeft = '8px';
+      btnCancel.addEventListener('click', () => { render(); });
+
+      editCard.appendChild(titleLabel);
+      editCard.appendChild(modelLabel);
+      editCard.appendChild(contentLabel);
+      editCard.appendChild(ratingLabel);
+      const ctlWrap = document.createElement('div');
+      ctlWrap.style.marginTop = '8px';
+      ctlWrap.appendChild(btnSave);
+      ctlWrap.appendChild(btnCancel);
+      editCard.appendChild(ctlWrap);
+
+      // replace cards container with editCard for this item by re-rendering with edit state
+      // simple approach: set global editId and render special case inside render()
+      editingId = m.id;
+      // temporarily render edit view
+      cardsEl.innerHTML = '';
+      cardsEl.appendChild(editCard);
+    }
+
+    // editing state
+    let editingId = null;
+
+    // Modal helpers
+    const viewModal = document.getElementById('viewModal');
+    const modalBody = document.getElementById('modalBody');
+    const modalClose = document.getElementById('modalClose');
+    const modalClose2 = document.getElementById('modalClose2');
+    const modalCopy = document.getElementById('modalCopy');
+
+    function openViewModal(m) {
+      try {
+        modalBody.innerHTML = '';
+        const title = document.createElement('h3');
+        title.textContent = m.title || '(no title)';
+        const modelEl = document.createElement('div');
+        modelEl.className = 'model';
+        modelEl.textContent = m.model;
+        const timesEl = document.createElement('div');
+        timesEl.className = 'times';
+        timesEl.textContent = `Created: ${new Date(m.createdAt).toLocaleString()} · Updated: ${new Date(m.updatedAt).toLocaleString()}`;
+        const tokenEl = document.createElement('div');
+        tokenEl.className = 'tokens';
+        tokenEl.innerHTML = `Tokens: ${m.tokenEstimate?.min||0} - ${m.tokenEstimate?.max||0} `;
+        const badge = document.createElement('span');
+        badge.className = 'badge ' + (m.tokenEstimate?.confidence || 'high');
+        badge.textContent = (m.tokenEstimate?.confidence || 'high').toUpperCase();
+        tokenEl.appendChild(badge);
+
+        const contentEl = document.createElement('pre');
+        contentEl.className = 'full-content';
+        contentEl.textContent = m.content || '';
+
+        modalBody.appendChild(title);
+        modalBody.appendChild(modelEl);
+        modalBody.appendChild(timesEl);
+        modalBody.appendChild(tokenEl);
+        modalBody.appendChild(contentEl);
+
+        viewModal.setAttribute('aria-hidden', 'false');
+        viewModal.classList.add('open');
+
+        modalCopy.onclick = () => {
+          try { navigator.clipboard.writeText(m.content || ''); showToast('Prompt copied to clipboard'); } catch (e) { showToast('Copy failed: ' + e.message, { type: 'error' }); }
+        };
+      } catch (err) { console.error('openViewModal error', err); showToast('Cannot open view: ' + err.message, { type: 'error' }); }
+    }
+
+    function closeViewModal() {
+      viewModal.setAttribute('aria-hidden', 'true');
+      viewModal.classList.remove('open');
+    }
+
+    modalClose.addEventListener('click', closeViewModal);
+    modalClose2.addEventListener('click', closeViewModal);
+    viewModal.addEventListener('click', (ev) => { if (ev.target === viewModal) closeViewModal(); });
+
+    // Backup manager (list existing backups and allow restore/delete)
+    function openBackupManager() {
+      try {
+        const backups = listBackups();
+        modalBody.innerHTML = '';
+        const h = document.createElement('h3');
+        h.textContent = 'Backups';
+        modalBody.appendChild(h);
+        if (backups.length === 0) {
+          const p = document.createElement('div'); p.textContent = 'No backups found.'; modalBody.appendChild(p);
+        } else {
+          const list = document.createElement('div');
+          list.style.display = 'grid'; list.style.gap = '8px';
+          for (const b of backups) {
+            const row = document.createElement('div');
+            row.style.display = 'flex'; row.style.justifyContent = 'space-between'; row.style.alignItems = 'center';
+            const left = document.createElement('div'); left.textContent = new Date(b.time).toLocaleString();
+            const actions = document.createElement('div');
+            const btnRestore = document.createElement('button'); btnRestore.textContent = 'Restore';
+            btnRestore.addEventListener('click', () => {
+              try { restoreBackup(b.key); prompts = getAllPrompts(); render(); showToast('Restored backup'); closeViewModal(); } catch (e) { showToast('Restore failed: ' + e.message, { type: 'error' }); }
+            });
+            const btnDel = document.createElement('button'); btnDel.textContent = 'Delete';
+            btnDel.style.marginLeft = '8px';
+            btnDel.addEventListener('click', () => { try { deleteBackup(b.key); showToast('Backup deleted'); openBackupManager(); } catch (e) { showToast('Delete failed: ' + e.message, { type: 'error' }); } });
+            actions.appendChild(btnRestore); actions.appendChild(btnDel);
+            row.appendChild(left); row.appendChild(actions);
+            list.appendChild(row);
+          }
+          modalBody.appendChild(list);
+        }
+        viewModal.setAttribute('aria-hidden', 'false');
+        viewModal.classList.add('open');
+      } catch (err) { showToast('Cannot open backups: ' + err.message, { type: 'error' }); }
+    }
+
+    // UI hooks: export / import
+    const exportBtn = document.createElement('button');
+    exportBtn.type = 'button';
+    exportBtn.textContent = 'Export JSON';
+    exportBtn.addEventListener('click', () => {
+      try {
+        exportPrompts();
+        showToast('Export created and download triggered');
+      } catch (err) {
+        showToast('Export failed: ' + err.message, { type: 'error' });
+        console.error(err);
+      }
+    });
+
+    const importInput = document.createElement('input');
+    importInput.type = 'file';
+    importInput.accept = 'application/json';
+    importInput.style.marginLeft = '8px';
+
+    importInput.addEventListener('change', async (ev) => {
+      const f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      try {
+        // Ask user whether to replace all or merge using styled modal
+        const replaceAll = await showConfirm('Replace existing prompts entirely with the imported file?', { okLabel: 'Replace All', cancelLabel: 'Merge' });
+        // Pass a callback to handle duplicate decision via modal
+        await importPromptsFile(f, { replaceAll, onDuplicateChoices: async (count) => {
+          return await showConfirm(`Import file contains ${count} prompts that conflict by ID. Replace duplicates?`, { okLabel: 'Replace duplicates', cancelLabel: 'Skip duplicates' });
+        }});
+        prompts = getAllPrompts();
+        render();
+        showToast('Import successful');
+      } catch (err) {
+        showToast('Import failed: ' + err.message, { type: 'error' });
+        console.error(err);
+      } finally {
+        importInput.value = '';
+      }
+    });
+
+    // attach export/import controls to the page
+    const controls = document.createElement('div');
+    controls.style.margin = '12px 0';
+    controls.className = 'controls';
+    controls.appendChild(exportBtn);
+    controls.appendChild(importInput);
+
+    const backupsBtn = document.createElement('button');
+    backupsBtn.type = 'button';
+    backupsBtn.textContent = 'Backups';
+    backupsBtn.addEventListener('click', openBackupManager);
+    controls.appendChild(backupsBtn);
+    document.querySelector('main').insertBefore(controls, document.querySelector('main').children[1]);
+
+    form.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const modelName = document.getElementById('modelName').value;
+      const content = document.getElementById('content').value || '';
+      const title = document.getElementById('title').value || '';
+      try {
+        const md = trackModel(modelName, content);
+        // build full prompt object to persist
+        const promptObj = Object.assign({ title, content, rating: null }, md);
+          const saved = savePrompt(promptObj);
+          prompts = getAllPrompts();
+          render();
+          showToast('Prompt saved');
+          form.reset();
+      } catch (err) {
+          showToast('Failed to add prompt: ' + err.message, { type: 'error' });
+      }
+    });
+
+    // initialize
+    // seed samples only if none exist
+    prompts = getAllPrompts();
+    if (prompts.length === 0) {
+      addSamplePrompts();
+      // persist samples
+      for (const p of prompts) {
+        try { savePrompt(p); } catch (e) { console.error('Failed to save sample prompt', e); }
+      }
+      prompts = getAllPrompts();
+    }
+    render();
+  </script>
+</body>
+</html>
