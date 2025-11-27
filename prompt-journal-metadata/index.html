@@ -7,6 +7,9 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <button id="themeToggle" class="theme-toggle" aria-pressed="false" title="Toggle theme">
+    <span class="icon">🌙</span>
+  </button>
   <main class="container">
     <h1>Prompt Library (Metadata)</h1>
 
@@ -128,8 +131,10 @@
         }
 
         const updateBtn = document.createElement('button');
-        updateBtn.className = 'small';
-        updateBtn.textContent = 'Touch UpdatedAt';
+        updateBtn.className = 'action-btn action-update';
+        updateBtn.innerHTML = '⏱️';
+        updateBtn.setAttribute('title', 'Touch updatedAt');
+        updateBtn.setAttribute('aria-label', 'Touch updatedAt');
         updateBtn.addEventListener('click', () => {
           try {
             const updated = updateTimestamps(m);
@@ -145,28 +150,30 @@
         card.appendChild(model);
         card.appendChild(times);
         card.appendChild(tokens);
-        card.appendChild(updateBtn);
 
         const editBtn = document.createElement('button');
-        editBtn.className = 'small';
-        editBtn.style.marginLeft = '8px';
-        editBtn.textContent = 'Edit';
+        editBtn.className = 'action-btn action-edit';
+        editBtn.innerHTML = '✏️';
+        editBtn.setAttribute('title', 'Edit prompt');
+        editBtn.setAttribute('aria-label', 'Edit prompt');
         editBtn.addEventListener('click', () => {
           startEdit(m);
         });
         card.appendChild(editBtn);
 
         const viewBtn = document.createElement('button');
-        viewBtn.className = 'small';
-        viewBtn.style.marginLeft = '8px';
-        viewBtn.textContent = 'View';
+        viewBtn.className = 'action-btn action-view';
+        viewBtn.innerHTML = '🔍';
+        viewBtn.setAttribute('title', 'View prompt');
+        viewBtn.setAttribute('aria-label', 'View prompt');
         viewBtn.addEventListener('click', () => { openViewModal(m); });
         card.appendChild(viewBtn);
 
         const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'small';
-        deleteBtn.style.marginLeft = '8px';
-        deleteBtn.textContent = 'Delete';
+        deleteBtn.className = 'action-btn action-delete';
+        deleteBtn.innerHTML = '🗑️';
+        deleteBtn.setAttribute('title', 'Delete prompt');
+        deleteBtn.setAttribute('aria-label', 'Delete prompt');
         deleteBtn.addEventListener('click', async () => {
           try {
             // create backup and delete
@@ -181,7 +188,49 @@
             showToast('Delete failed: ' + err.message, { type: 'error' });
           }
         });
-        card.appendChild(deleteBtn);
+        // we'll add buttons to a unified actions container below
+
+        // Copy button to quickly copy the prompt content
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'action-btn action-copy';
+        copyBtn.innerHTML = '📋';
+        copyBtn.setAttribute('aria-label', 'Copy prompt content');
+        copyBtn.setAttribute('title', 'Copy prompt text to clipboard');
+        copyBtn.addEventListener('click', async () => {
+          try {
+            const textToCopy = m.content || '';
+            if (!textToCopy) { showToast('No prompt content to copy', { type: 'error' }); return; }
+            // Try navigator.clipboard API
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(textToCopy);
+              showToast('Prompt copied to clipboard');
+            } else {
+              // Fallback: create temporary textarea
+              const ta = document.createElement('textarea');
+              ta.value = textToCopy;
+              ta.setAttribute('readonly', '');
+              ta.style.position = 'absolute';
+              ta.style.left = '-9999px';
+              document.body.appendChild(ta);
+              ta.select();
+              const ok = document.execCommand('copy');
+              document.body.removeChild(ta);
+              if (ok) showToast('Prompt copied to clipboard');
+              else throw new Error('Fallback copy failed');
+            }
+          } catch (err) {
+            showToast('Copy failed: ' + (err.message || err), { type: 'error' });
+          }
+        });
+        // Group actions into a single row for compact UI
+        const actionsEl = document.createElement('div');
+        actionsEl.className = 'card-actions';
+        actionsEl.appendChild(updateBtn);
+        actionsEl.appendChild(editBtn);
+        actionsEl.appendChild(viewBtn);
+        actionsEl.appendChild(copyBtn);
+        actionsEl.appendChild(deleteBtn);
+        card.appendChild(actionsEl);
 
         card.appendChild(preview);
 
@@ -468,6 +517,50 @@
       prompts = getAllPrompts();
     }
     render();
+
+    // THEME toggling: respect user preference or system fallback
+    const THEME_KEY = 'pv_theme_preference';
+    const themeToggle = document.getElementById('themeToggle');
+    function applyTheme(theme) {
+      const isDark = theme === 'dark';
+      if (isDark) document.body.classList.add('dark'); else document.body.classList.remove('dark');
+      themeToggle.setAttribute('aria-pressed', isDark ? 'true' : 'false');
+      // icon shows the action that will happen when clicked: show sun to switch to light if currently dark
+      themeToggle.querySelector('.icon').textContent = isDark ? '☀️' : '🌙';
+    }
+
+    function getInitialTheme() {
+      const stored = localStorage.getItem(THEME_KEY);
+      if (stored === 'dark' || stored === 'light') return stored;
+      if (window.matchMedia) return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      return 'light';
+    }
+
+    function setTheme(theme, persist = true) {
+      applyTheme(theme);
+      if (persist) localStorage.setItem(THEME_KEY, theme);
+    }
+
+    // Initialize theme
+    setTheme(getInitialTheme(), false);
+
+    // if user toggles theme
+    themeToggle.addEventListener('click', () => {
+      const current = document.body.classList.contains('dark') ? 'dark' : 'light';
+      const next = current === 'dark' ? 'light' : 'dark';
+      setTheme(next, true);
+      showToast('Theme set to ' + next);
+    });
+
+    // Listen for system changes if user hasn't manually selected a theme
+    if (window.matchMedia) {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      const handler = (e) => {
+        if (!localStorage.getItem(THEME_KEY)) setTheme(e.matches ? 'dark' : 'light');
+      };
+      if (mq.addEventListener) mq.addEventListener('change', handler);
+      else if (mq.addListener) mq.addListener(handler);
+    }
   </script>
 </body>
 </html>

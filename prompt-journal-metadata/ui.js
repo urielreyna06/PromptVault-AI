@@ -3,21 +3,10 @@
 function createModal() {
   const modal = document.createElement('div');
   modal.className = 'ui-modal';
-  modal.style.position = 'fixed';
-  modal.style.inset = '0';
-  modal.style.display = 'flex';
-  modal.style.alignItems = 'center';
-  modal.style.justifyContent = 'center';
-  modal.style.background = 'rgba(2,6,23,0.5)';
-  modal.style.zIndex = 9999;
 
   const box = document.createElement('div');
-  box.style.background = '#fff';
-  box.style.padding = '18px';
-  box.style.borderRadius = '10px';
-  box.style.maxWidth = '520px';
+  box.className = 'ui-modal-box';
   box.style.width = '92%';
-  box.style.boxShadow = '0 30px 80px rgba(2,6,23,0.35)';
 
   const msg = document.createElement('div');
   msg.style.marginBottom = '12px';
@@ -45,27 +34,25 @@ export function showConfirm(message, opts = {}) {
 
     const btnCancel = document.createElement('button');
     btnCancel.textContent = cancelLabel;
-    btnCancel.style.background = 'transparent';
-    btnCancel.style.border = '1px solid #cbd5e1';
-    btnCancel.style.padding = '8px 12px';
-    btnCancel.style.borderRadius = '8px';
-    btnCancel.onclick = () => { document.body.removeChild(modal); resolve(false); };
+    btnCancel.className = 'ui-btn ui-btn-secondary';
+    btnCancel.onclick = () => { modal.remove(); resolve(false); };
 
     const btnOk = document.createElement('button');
     btnOk.textContent = okLabel;
-    btnOk.style.background = '#0b63d6';
-    btnOk.style.color = '#fff';
-    btnOk.style.border = 'none';
-    btnOk.style.padding = '8px 12px';
-    btnOk.style.borderRadius = '8px';
-    btnOk.onclick = () => { document.body.removeChild(modal); resolve(true); };
+    btnOk.className = 'ui-btn';
+    btnOk.onclick = () => { modal.remove(); resolve(true); };
 
     modal.actions.appendChild(btnCancel);
     modal.actions.appendChild(btnOk);
 
     modal.addEventListener('click', (ev) => { if (ev.target === modal) { document.body.removeChild(modal); resolve(false); } });
+    const onKey = (e) => { if (e.key === 'Escape') { if (document.body.contains(modal)) { document.body.removeChild(modal); resolve(false); } } };
+    document.addEventListener('keydown', onKey);
 
     document.body.appendChild(modal);
+    // cleanup when removed
+    const origRemove = modal.remove;
+    modal.remove = function () { if (document.body.contains(modal)) { document.body.removeChild(modal); document.removeEventListener('keydown', onKey); } };
   });
 }
 
@@ -91,15 +78,8 @@ function getToastContainer() {
 export function showToast(message, options = {}) {
   const container = getToastContainer();
   const t = document.createElement('div');
-  t.style.background = options.type === 'error' ? '#ffe6e6' : '#0b63d6';
-  t.style.color = options.type === 'error' ? '#7a1313' : '#fff';
-  t.style.padding = '10px 14px';
-  t.style.borderRadius = '10px';
-  t.style.minWidth = '180px';
-  t.style.boxShadow = '0 6px 18px rgba(2,6,23,0.12)';
-  t.style.display = 'flex';
-  t.style.alignItems = 'center';
-  t.style.justifyContent = 'space-between';
+  t.className = 'ui-toast';
+  if (options.type === 'error') t.classList.add('error');
 
   const txt = document.createElement('div');
   txt.textContent = message;
@@ -108,12 +88,7 @@ export function showToast(message, options = {}) {
   if (options.actionLabel && typeof options.action === 'function') {
     const act = document.createElement('button');
     act.textContent = options.actionLabel;
-    act.style.marginLeft = '12px';
-    act.style.background = 'transparent';
-    act.style.border = '1px solid rgba(255,255,255,0.2)';
-    act.style.color = '#fff';
-    act.style.padding = '6px 8px';
-    act.style.borderRadius = '8px';
+    act.className = 'action';
     act.onclick = () => { options.action(); container.removeChild(t); };
     t.appendChild(act);
   }
